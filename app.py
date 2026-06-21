@@ -8,7 +8,6 @@
 # - Ingredients are added with a simple + button.
 # - Profit summary calculates cost per piece, suggested price, selling price, and profit.
 
-from pathlib import Path
 import base64
 import io
 import re
@@ -17,9 +16,10 @@ import hmac
 import numpy as np
 import pandas as pd
 import streamlit as st
+from supabase import Client, create_client
 
 
-APP_VERSION = "v15 GitHub-safe login version"
+APP_VERSION = "v16 Supabase persistent storage"
 DEFAULT_EXCHANGE_RATE = 90000.0
 
 # Embedded defaults. Do not edit these long strings manually.
@@ -28,12 +28,6 @@ INGREDIENTS_CSV_B64 = "SW5ncmVkaWVudCAvIHByb2R1Y3QsU291cmNlLFBhY2thZ2Ugc2l6ZSBwZ
 RECIPE_SETTINGS_CSV_B64 = "cmVjaXBlLHBpZWNlc19wZXJfYmF0Y2gscGFja2FnaW5nX2Nvc3RfcGVyX3BpZWNlLGxhYm9yX2Nvc3RfcGVyX2JhdGNoLG90aGVyX2Nvc3RfcGVyX2JhdGNoLHdhc3RlX3BlcmNlbnQsc2VsbF9wcmljZV9wZXJfcGllY2UscGxhbm5lZF9iYXRjaGVzX3NvbGQKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLDI2LjAsMC4wLDAuMCwwLjAsMC4wLDAuMCwxLjAKRmVjaHdldCBSYW1sIC0gY2hlY2sgbmFtZSwxNi4wLDAuMCwwLjAsMC4wLDAuMCwwLjAsMS4wCkNob2NvbGF0ZSBSYW1sIC0gY2hlY2sgbmFtZSwxMC4wLDAuMCwwLjAsMC4wLDAuMCwwLjAsMS4wCkhlYWx0aHkgU25pY2tlcnMsMTAuMCwwLjAsMC4wLDAuMCwwLjAsMC4wLDEuMAo="
 RECIPE_LINES_CSV_B64 = "cmVjaXBlLGluZ3JlZGllbnQscXVhbnRpdHlfdXNlZApFeGNlbCBpbXBvcnRlZCByZWNpcGUsRmxvdXIsMzcwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLE51dGVsbGEsNTIwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEx1cnBhayBidXR0ZXIsMjAwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEVnZyBjYXJ0b24sMi4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxDb3JuIGZsb3VyLDEwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEJha2luZyBwb3dkZXIsOC4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxWYW5pbGxhIHN1Z2FyIHBvd2RlciwxMC4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxNaWxrIGNob2NvbGF0ZSBjaGlwcywyMDAuMApFeGNlbCBpbXBvcnRlZCByZWNpcGUsV2hpdGUgc3VnYXIsODguMApFeGNlbCBpbXBvcnRlZCByZWNpcGUsU29kaXVtIGJpY2FyYm9uYXRlLDIuMApGZWNod2V0IFJhbWwgLSBjaGVjayBuYW1lLE1hZ2lrIHdoaXBwaW5nIGNyZWFtLDIwMC4wCkZlY2h3ZXQgUmFtbCAtIGNoZWNrIG5hbWUsTmVzdGxlIGNvbmRlbnNlZCBtaWxrLDE0MC4wCkZlY2h3ZXQgUmFtbCAtIGNoZWNrIG5hbWUsQ3JlYW0gY2hlZXNlLDMwMC4wCkNob2NvbGF0ZSBSYW1sIC0gY2hlY2sgbmFtZSxDb29raWUgY3JlYW0gLyBPcmVvIGNvb2tpZSBjcmVhbSwyMDAuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsTWlsayBjaG9jb2xhdGUgYmxvY2sgZm9yIGJha2luZywyMDAuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsUGluayBjaG9jb2xhdGUsNzUuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsTWl4IC8gZmxhdm9yIHBvd2RlciwxLjAKSGVhbHRoeSBTbmlja2VycyxEYXRlcywzNTAuMApIZWFsdGh5IFNuaWNrZXJzLE1peGVkIG51dHMsMTAwLjAKSGVhbHRoeSBTbmlja2VycyxEYXJrIGNob2NvbGF0ZSBibG9jayA0MCUgbm8gYWRkZWQgc3VnYXIsMjUuMAo="
 
-DATA_DIR = Path("chocoholic_data_v11")
-DATA_DIR.mkdir(exist_ok=True)
-
-INGREDIENTS_FILE = DATA_DIR / "ingredients.csv"
-RECIPE_SETTINGS_FILE = DATA_DIR / "recipe_settings.csv"
-RECIPE_LINES_FILE = DATA_DIR / "recipe_lines.csv"
 
 INGREDIENT_INPUT_COLUMNS = [
     "Ingredient / product",
@@ -135,39 +129,241 @@ def safe_key(text):
     return text[:80]
 
 
-def save_csv(df, path, columns):
-    df = df[columns].copy()
-    df.to_csv(path, index=False)
+def json_value(value):
+    """Convert pandas/numpy values to JSON-safe Python values."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
 
 
-def load_csv(path, columns):
-    if path.exists():
-        df = pd.read_csv(path)
-    else:
-        df = pd.DataFrame(columns=columns)
-
-    for col in columns:
-        if col not in df.columns:
-            df[col] = None
-
-    return df[columns].copy()
+@st.cache_resource
+def create_cached_supabase_client(url, key):
+    return create_client(url, key)
 
 
-def initialize_files():
-    if not INGREDIENTS_FILE.exists():
-        save_csv(default_ingredients_df(), INGREDIENTS_FILE, INGREDIENT_INPUT_COLUMNS)
+def get_supabase():
+    try:
+        url = str(st.secrets["supabase"]["url"])
+        key = str(st.secrets["supabase"]["key"])
+    except Exception:
+        return None
 
-    if not RECIPE_SETTINGS_FILE.exists():
-        save_csv(default_recipe_settings_df(), RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
+    if clean_text(url) == "" or clean_text(key) == "":
+        return None
 
-    if not RECIPE_LINES_FILE.exists():
-        save_csv(default_recipe_lines_df(), RECIPE_LINES_FILE, RECIPE_LINE_COLUMNS)
+    return create_cached_supabase_client(url, key)
+
+
+def ingredient_row_to_payload(row):
+    return {
+        "name": clean_text(row.get("Ingredient / product")),
+        "source": clean_text(row.get("Source")) or None,
+        "package_size": json_value(row.get("Package size per item")),
+        "unit": clean_text(row.get("Unit")) or None,
+        "number_bought": json_value(row.get("Number bought")),
+        "total_price_lbp": json_value(row.get("Total price LBP")),
+        "total_price_usd": json_value(row.get("Total price USD")),
+        "notes": clean_text(row.get("Notes")) or None,
+    }
+
+
+def recipe_row_to_payload(row):
+    return {
+        "name": clean_text(row.get("recipe")),
+        "pieces_per_batch": clean_number(row.get("pieces_per_batch")),
+        "packaging_cost_per_piece": clean_number(row.get("packaging_cost_per_piece")),
+        "labor_cost_per_batch": clean_number(row.get("labor_cost_per_batch")),
+        "other_cost_per_batch": clean_number(row.get("other_cost_per_batch")),
+        "waste_percent": clean_number(row.get("waste_percent")),
+        "sell_price_per_piece": clean_number(row.get("sell_price_per_piece")),
+        "planned_batches_sold": clean_number(row.get("planned_batches_sold"), 1.0),
+    }
+
+
+def save_ingredients_to_database(df, delete_missing=True):
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    clean_df = df[INGREDIENT_INPUT_COLUMNS].copy()
+    clean_df["Ingredient / product"] = clean_df["Ingredient / product"].apply(clean_text)
+    clean_df = clean_df[clean_df["Ingredient / product"] != ""]
+
+    payload = [ingredient_row_to_payload(row) for row in clean_df.to_dict("records")]
+    if payload:
+        supabase.table("ingredients").upsert(payload, on_conflict="name").execute()
+
+    if delete_missing:
+        keep_names = set(clean_df["Ingredient / product"].tolist())
+        existing = supabase.table("ingredients").select("name").execute().data or []
+        for item in existing:
+            name = clean_text(item.get("name"))
+            if name and name not in keep_names:
+                try:
+                    supabase.table("ingredients").delete().eq("name", name).execute()
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Cannot remove ingredient '{name}' because it is used by a recipe. "
+                        "Remove it from the recipe first."
+                    ) from exc
+
+
+def save_recipe_settings_to_database(recipe_settings):
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    payload = [recipe_row_to_payload(row) for row in recipe_settings.to_dict("records")]
+    payload = [row for row in payload if row["name"]]
+    if payload:
+        supabase.table("recipes").upsert(payload, on_conflict="name").execute()
+
+
+def save_recipe_to_database(setting_row, recipe_lines):
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    recipe_payload = recipe_row_to_payload(setting_row)
+    recipe_name = recipe_payload["name"]
+    if recipe_name == "":
+        raise ValueError("Recipe name is empty.")
+
+    supabase.table("recipes").upsert(recipe_payload, on_conflict="name").execute()
+    recipe_record = (
+        supabase.table("recipes")
+        .select("id")
+        .eq("name", recipe_name)
+        .single()
+        .execute()
+        .data
+    )
+    recipe_id = recipe_record["id"]
+
+    supabase.table("recipe_ingredients").delete().eq("recipe_id", recipe_id).execute()
+
+    if recipe_lines.empty:
+        return
+
+    ingredient_records = supabase.table("ingredients").select("id,name").execute().data or []
+    ingredient_ids = {clean_text(row.get("name")): row.get("id") for row in ingredient_records}
+
+    link_payload = []
+    missing_names = []
+    for row in recipe_lines.to_dict("records"):
+        ingredient_name = clean_text(row.get("ingredient"))
+        ingredient_id = ingredient_ids.get(ingredient_name)
+        if ingredient_id is None:
+            missing_names.append(ingredient_name)
+            continue
+        link_payload.append(
+            {
+                "recipe_id": recipe_id,
+                "ingredient_id": ingredient_id,
+                "quantity_used": clean_number(row.get("quantity_used")),
+            }
+        )
+
+    if missing_names:
+        raise RuntimeError(
+            "These ingredients are missing from Supabase: " + ", ".join(sorted(set(missing_names)))
+        )
+
+    if link_payload:
+        supabase.table("recipe_ingredients").insert(link_payload).execute()
+
+
+def load_all_data_from_database():
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    ingredients_data = (
+        supabase.table("ingredients").select("*").order("name").execute().data or []
+    )
+    recipes_data = supabase.table("recipes").select("*").order("name").execute().data or []
+    links_data = supabase.table("recipe_ingredients").select("*").execute().data or []
+
+    ingredient_rows = [
+        {
+            "Ingredient / product": row.get("name"),
+            "Source": row.get("source"),
+            "Package size per item": row.get("package_size"),
+            "Unit": row.get("unit"),
+            "Number bought": row.get("number_bought"),
+            "Total price LBP": row.get("total_price_lbp"),
+            "Total price USD": row.get("total_price_usd"),
+            "Notes": row.get("notes"),
+        }
+        for row in ingredients_data
+    ]
+    ingredients_input = pd.DataFrame(ingredient_rows, columns=INGREDIENT_INPUT_COLUMNS)
+
+    recipe_rows = [
+        {
+            "recipe": row.get("name"),
+            "pieces_per_batch": row.get("pieces_per_batch"),
+            "packaging_cost_per_piece": row.get("packaging_cost_per_piece"),
+            "labor_cost_per_batch": row.get("labor_cost_per_batch"),
+            "other_cost_per_batch": row.get("other_cost_per_batch"),
+            "waste_percent": row.get("waste_percent"),
+            "sell_price_per_piece": row.get("sell_price_per_piece"),
+            "planned_batches_sold": row.get("planned_batches_sold"),
+        }
+        for row in recipes_data
+    ]
+    recipe_settings = pd.DataFrame(recipe_rows, columns=RECIPE_SETTINGS_COLUMNS)
+
+    recipe_names = {row.get("id"): row.get("name") for row in recipes_data}
+    ingredient_names = {row.get("id"): row.get("name") for row in ingredients_data}
+    line_rows = []
+    for row in links_data:
+        recipe_name = recipe_names.get(row.get("recipe_id"))
+        ingredient_name = ingredient_names.get(row.get("ingredient_id"))
+        if recipe_name and ingredient_name:
+            line_rows.append(
+                {
+                    "recipe": recipe_name,
+                    "ingredient": ingredient_name,
+                    "quantity_used": row.get("quantity_used"),
+                }
+            )
+    recipe_lines = pd.DataFrame(line_rows, columns=RECIPE_LINE_COLUMNS)
+
+    return ingredients_input, recipe_settings, recipe_lines
+
+
+def seed_database_if_empty():
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    ingredients_exist = bool(
+        supabase.table("ingredients").select("id").limit(1).execute().data
+    )
+    if not ingredients_exist:
+        save_ingredients_to_database(default_ingredients_df(), delete_missing=False)
+
+    recipes_exist = bool(supabase.table("recipes").select("id").limit(1).execute().data)
+    if not recipes_exist:
+        defaults_settings = default_recipe_settings_df()
+        defaults_lines = default_recipe_lines_df()
+        for _, setting in defaults_settings.iterrows():
+            recipe_name = clean_text(setting["recipe"])
+            lines = defaults_lines[defaults_lines["recipe"] == recipe_name].copy()
+            save_recipe_to_database(setting.to_dict(), lines)
 
 
 def reset_all_data():
-    save_csv(default_ingredients_df(), INGREDIENTS_FILE, INGREDIENT_INPUT_COLUMNS)
-    save_csv(default_recipe_settings_df(), RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
-    save_csv(default_recipe_lines_df(), RECIPE_LINES_FILE, RECIPE_LINE_COLUMNS)
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    supabase.table("recipes").delete().neq("name", "__never__").execute()
+    supabase.table("ingredients").delete().neq("name", "__never__").execute()
+    seed_database_if_empty()
 
     for key in list(st.session_state.keys()):
         if key.startswith("recipe_cart_") or key.startswith("pending_ingredient_"):
@@ -382,14 +578,13 @@ def compute_recipe_summary(ingredients_input, recipe_lines, recipe_settings, exc
     return summary, merged, ingredients
 
 
-def delete_recipe(recipe_name, recipe_settings, recipe_lines):
+def delete_recipe(recipe_name):
     recipe_name = clean_text(recipe_name)
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
 
-    new_settings = recipe_settings[recipe_settings["recipe"] != recipe_name].copy()
-    new_lines = recipe_lines[recipe_lines["recipe"] != recipe_name].copy()
-
-    save_csv(new_settings, RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
-    save_csv(new_lines, RECIPE_LINES_FILE, RECIPE_LINE_COLUMNS)
+    supabase.table("recipes").delete().eq("name", recipe_name).execute()
 
     for key in list(st.session_state.keys()):
         if key.startswith("recipe_cart_") or key.startswith("pending_ingredient_"):
@@ -463,7 +658,7 @@ def show_ingredients_page(ingredients_input):
         if to_save["Ingredient / product"].duplicated().any():
             st.error("Some ingredient names are duplicated. Keep ingredient names unique.")
         else:
-            save_csv(to_save, INGREDIENTS_FILE, INGREDIENT_INPUT_COLUMNS)
+            save_ingredients_to_database(to_save)
             st.success("Ingredient table saved.")
             st.rerun()
 
@@ -545,7 +740,7 @@ def show_recipe_builder(ingredients_input, recipe_settings, recipe_lines):
             confirm_delete = st.checkbox(f"I confirm I want to remove {selected_recipe}")
 
             if st.button("Remove recipe", disabled=not confirm_delete):
-                delete_recipe(selected_recipe, recipe_settings, recipe_lines)
+                delete_recipe(selected_recipe)
                 st.success(f"Removed recipe: {selected_recipe}")
                 st.rerun()
 
@@ -844,9 +1039,6 @@ def show_recipe_builder(ingredients_input, recipe_settings, recipe_lines):
                 ]
             )[RECIPE_SETTINGS_COLUMNS]
 
-            settings_without = recipe_settings[recipe_settings["recipe"] != selected_recipe].copy()
-            settings_new = pd.concat([settings_without, new_setting], ignore_index=True)
-
             new_lines = pd.DataFrame(
                 [
                     {
@@ -859,11 +1051,7 @@ def show_recipe_builder(ingredients_input, recipe_settings, recipe_lines):
                 ]
             )[RECIPE_LINE_COLUMNS]
 
-            lines_without = recipe_lines[recipe_lines["recipe"] != selected_recipe].copy()
-            lines_new = pd.concat([lines_without, new_lines], ignore_index=True)
-
-            save_csv(settings_new, RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
-            save_csv(lines_new, RECIPE_LINES_FILE, RECIPE_LINE_COLUMNS)
+            save_recipe_to_database(new_setting.iloc[0].to_dict(), new_lines)
 
             st.success(f"Saved recipe: {selected_recipe}")
             st.rerun()
@@ -967,7 +1155,7 @@ def show_profit_summary(ingredients_input, recipe_settings, recipe_lines):
             updated_settings["planned_batches_sold"]
         )
 
-        save_csv(updated_settings, RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
+        save_recipe_settings_to_database(updated_settings)
         st.success("Summary prices and planned batches saved.")
         st.rerun()
 
@@ -987,7 +1175,7 @@ def show_profit_summary(ingredients_input, recipe_settings, recipe_lines):
     confirm_delete = st.checkbox(f"I confirm I want to remove {recipe_to_delete}", key="summary_delete_confirm")
 
     if st.button("Remove selected recipe", disabled=not confirm_delete):
-        delete_recipe(recipe_to_delete, recipe_settings, recipe_lines)
+        delete_recipe(recipe_to_delete)
         st.success(f"Removed recipe: {recipe_to_delete}")
         st.rerun()
 
@@ -1073,12 +1261,6 @@ def require_login():
     st.stop()
 
 def main():
-    initialize_files()
-
-    ingredients_input = load_csv(INGREDIENTS_FILE, INGREDIENT_INPUT_COLUMNS)
-    recipe_settings = load_csv(RECIPE_SETTINGS_FILE, RECIPE_SETTINGS_COLUMNS)
-    recipe_lines = load_csv(RECIPE_LINES_FILE, RECIPE_LINE_COLUMNS)
-
     st.set_page_config(
         page_title="Chocoholic",
         page_icon="🍫",
@@ -1086,6 +1268,19 @@ def main():
     )
 
     require_login()
+
+    if get_supabase() is None:
+        st.title("Chocoholic")
+        st.error("Supabase is not configured. Add [supabase] url and key in Streamlit Secrets.")
+        st.stop()
+
+    try:
+        seed_database_if_empty()
+        ingredients_input, recipe_settings, recipe_lines = load_all_data_from_database()
+    except Exception as exc:
+        st.title("Chocoholic")
+        st.error(f"Could not connect to Supabase: {exc}")
+        st.stop()
 
     st.title("Chocoholic")
     st.caption(f"Running version: {APP_VERSION}")
@@ -1097,6 +1292,7 @@ def main():
             st.rerun()
 
     st.write("Ingredient prices -> recipe quantities -> cost per piece -> selling price -> profit.")
+    st.success("Supabase storage is active. Ingredients and recipes are saved permanently.")
 
     tab_ingredients, tab_builder, tab_profit = st.tabs(
         ["1. Ingredients", "2. Recipe Builder", "3. Profit Summary"]

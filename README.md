@@ -1,9 +1,15 @@
-# Chocoholic
+# Chocoholic Supabase version
 
-GitHub-safe Streamlit version. The password is not hardcoded in app.py.
+This version stores ingredients, recipes, and recipe ingredient quantities in Supabase.
 
-## Deploy secrets
+Streamlit Secrets must contain:
 
-In Streamlit Cloud > App settings > Secrets, paste:
+```toml
+[auth]
+username = "chahra"
+password = "YOUR_LOGIN_PASSWORD"
 
-
+[supabase]
+url = "https://YOUR-PROJECT.supabase.co"
+key = "YOUR_SUPABASE_SECRET_KEY"
+```
