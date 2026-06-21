@@ -1,15 +1,7 @@
-# Chocoholic Supabase version
+# Chocoholic Supabase v19
 
-This version stores ingredients, recipes, and recipe ingredient quantities in Supabase.
-
-Streamlit Secrets must contain:
-
-```toml
-[auth]
-username = "chahra"
-password = "YOUR_LOGIN_PASSWORD"
-
-[supabase]
-url = "https://YOUR-PROJECT.supabase.co"
-key = "YOUR_SUPABASE_SECRET_KEY"
-```
+- Uses the latest attached export as the embedded ingredient backup.
+- Embedded ingredients: 54.
+- Contains zero embedded/default recipes.
+- Normal startup does not overwrite existing Supabase ingredients.
+- The full reset option is protected by a confirmation checkbox.

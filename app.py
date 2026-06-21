@@ -19,14 +19,14 @@ import streamlit as st
 from supabase import Client, create_client
 
 
-APP_VERSION = "v16 Supabase persistent storage"
+APP_VERSION = "v19 Supabase with latest ingredient export"
 DEFAULT_EXCHANGE_RATE = 90000.0
 
 # Embedded defaults. Do not edit these long strings manually.
 # Use the website tables to edit data after the app starts.
-INGREDIENTS_CSV_B64 = "SW5ncmVkaWVudCAvIHByb2R1Y3QsU291cmNlLFBhY2thZ2Ugc2l6ZSBwZXIgaXRlbSxVbml0LE51bWJlciBib3VnaHQsVG90YWwgcHJpY2UgTEJQLFRvdGFsIHByaWNlIFVTRCxOb3RlcwpQb3BwaW5zIGNob2NvIGJpdHMsQWwgTW9raHRhciByZWNlaXB0LDM1MC4wLGcsMS4wLDMyOTk5NC4wLDMuNjY2NiwKRmxvdXIsQWwgTW9raHRhciByZWNlaXB0LDkwMC4wLGcsNC4wLDQwMDAwMC4wLDQuNDQ0NDQ0NDQ0NDQ0NDQ1LApOdXRlbGxhLEFsIE1va2h0YXIgcmVjZWlwdCw3NTAuMCxnLDEuMCw3NjUwMDAuMCw4LjUsCkdhbmRvdXIgNTU1IGJpc2N1aXQsQWwgTW9raHRhciByZWNlaXB0LDUyMC4wLGcsMy4wLDg0MDAwMC4wLDkuMzMzMzMzMzMzMzMzMzM0LApDYWpvdSxBbCBNb2todGFyIHJlY2VpcHQsMTAwLjAsZywyLjAsMTk5OTgwLjAsMi4yMjIsCkFsbW9uZCxBbCBNb2todGFyIHJlY2VpcHQsMTAwLjAsZywyLjAsMjM5OTQwLjAsMi42NjYsCk1hZ2lrIHdoaXBwaW5nIGNyZWFtLEFsIE1va2h0YXIgcmVjZWlwdCwxMDAwLjAsbWwsMS4wLDMxMDAwMC4wLDMuNDQ0NDQ0NDQ0NDQ0NDQ0NiwKTWlsayAxIEwsQWwgTW9raHRhciByZWNlaXB0LDEuMCxMLDEuMCwxNzAwMDAuMCwxLjg4ODg4ODg4ODg4ODg4ODgsCkNhbmRpYSBtaWxrLEFsIE1va2h0YXIgcmVjZWlwdCwxLjAsTCwxLjAsNjQwMDAwLjAsNy4xMTExMTExMTExMTExMTEsClB1Y2sgY29va2luZyBjcmVhbSxBbCBNb2todGFyIHJlY2VpcHQsMS4wLEwsMS4wLDU5OTk5NC4wLDYuNjY2NiwKTHVycGFrIGJ1dHRlcixBbCBNb2todGFyIHJlY2VpcHQsNDAwLjAsZyw3LjAsMzQzMDAwMC4wLDM4LjExMTExMTExMTExMTExNCwKRWdnIGNhcnRvbixBbCBNb2todGFyIHJlY2VpcHQsMzAuMCx1bml0LDEuMCwzMjk5OTQuMCwzLjY2NjYsCkRvbW8gdmFuaWxsYSBjdXN0YXJkLEFsIE1va2h0YXIgcmVjZWlwdCwzMDAuMCxnLDEuMCwyMDAwMDcuMCwyLjIyMjMsCk5lc3RsZSBjb25kZW5zZWQgbWlsayxBbCBNb2todGFyIHJlY2VpcHQsMzcwLjAsZywyLjAsNDYwMDAwLjAsNS4xMTExMTExMTExMTExMTEsCk9pbCxBbCBNb2todGFyIHJlY2VpcHQsNC4wLEwsMS4wLDgzMDAwMC4wLDkuMjIyMjIyMjIyMjIyMjIxLApCdWVubyBzcHJlYWQsTXVuY2hpZXMgY2FydCwxLjAsa2csMi4wLCwsVW5jbGVhciBVU0QgcHJpY2UgaW4gRXhjZWw6ID8/Pz8/Pz8KV2hpcHBlZCBjcmVhbSBwb3dkZXIgdmFuaWxsYSxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE0LjAsClBpc3RhY2hpbyBzcHJlYWQsTXVuY2hpZXMgY2FydCwxLjAsa2csMi4wLCwzNy4wLApXaGl0ZSBjaG9jb2xhdGUgY2hpcHMsTXVuY2hpZXMgY2FydCw1MDAuMCxnLDEuMCwsMy41LApDaGlhIHNlZWRzLE11bmNoaWVzIGNhcnQsNDAwLjAsZywxLjAsLDQuNCwKSWNpbmcgc3VnYXIsTXVuY2hpZXMgY2FydCwxLjAsa2csMS4wLCwxLjUsCkNvcm4gZmxvdXIsTXVuY2hpZXMgY2FydCwxLjAsa2csMi4wLCwzLjAsCkJha2luZyBwb3dkZXIsTXVuY2hpZXMgY2FydCw1MDAuMCxnLDEuMCwsMi41LApWYW5pbGxhIHN1Z2FyIHBvd2RlcixNdW5jaGllcyBjYXJ0LDUwMC4wLGcsMS4wLCwyLjksClJlZCBnZWwgZm9vZCBjb2xvcmluZyxNdW5jaGllcyBjYXJ0LDIwLjAsZywxLjAsLCxVbmNsZWFyIFVTRCBwcmljZSBpbiBFeGNlbDogPz8/Pz8/Pz8/PwpSaWNlIGNyaXNweSBtaWxrIHRvcHBpbmdzLE11bmNoaWVzIGNhcnQsNTAwLjAsZywxLjAsLDMuOSwKTWlsayBjaG9jb2xhdGUgY2hpcHMsTXVuY2hpZXMgY2FydCwxLjAsa2csMS4wLCw2LjUsCk9hdCBmbGFrZXMsTXVuY2hpZXMgY2FydCwyNTAuMCxnLDQuMCwsMy42LApEYXJrIGNob2NvbGF0ZSBibG9jayA0MCUgbm8gYWRkZWQgc3VnYXIsTXVuY2hpZXMgY2FydCwyMjUuMCxnLDIuMCwsNy41LApEcmllZCBmcnVpdCBjdWJlcyxNdW5jaGllcyBjYXJ0LDMwMC4wLGcsMS4wLCw0Ljc1LApSaWNlIGNyaXNweSByYWluYm93LE11bmNoaWVzIGNhcnQsNDUwLjAsZywyLjAsLDcuOCwKU3BlY3Vsb29zIGJpc2N1aXQgY3JlYW15IHNwcmVhZCxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE2LjAsCkJpc2N1aXQgc3ByZWFkLE11bmNoaWVzIGNhcnQsMS4wLGtnLDIuMCwsMTMuMCwKQ29jb2EgcG93ZGVyIHVuc3dlZXRlbmVkIDEwLTEyJSxNdW5jaGllcyBjYXJ0LDEuMCxrZywxLjAsLCxVbmNsZWFyIFVTRCBwcmljZSBpbiBFeGNlbDogPz8/Pz8/Pz8/PwpSZWQgdmVsdmV0IGNha2UgbWl4LE11bmNoaWVzIGNhcnQsNDAwLjAsZywxLjAsLDIuNzUsCkRhcmsgY2hvY29sYXRlIGJsb2NrIGZvciBiYWtpbmcsTXVuY2hpZXMgY2FydCwzLjAsa2csMi4wLCw0NC4wLApNaWxrIGNob2NvbGF0ZSBibG9jayBmb3IgYmFraW5nLE11bmNoaWVzIGNhcnQsMy4wLGtnLDMuMCwsNjQuNSwKV2hpdGUgc3VnYXIsTXVuY2hpZXMgY2FydCw5MDAuMCxnLDEwLjAsLDkuMCwKQnV0dGVyY3JlYW0gdmFuaWxsYSxNdW5jaGllcyBjYXJ0LDEwMC4wLGcsMS4wLCwxLjUsCkJlZWYgZ2VsYXRpbiBwb3dkZXIgaGFsYWwsTXVuY2hpZXMgY2FydCw1MC4wLGcsMi4wLCwzLjAsClNvZGl1bSBiaWNhcmJvbmF0ZSxNdW5jaGllcyBjYXJ0LDUwMC4wLGcsMS4wLCwxLjUsClBlYW51dCBidXR0ZXIgMTAwJSxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsClhYIC0gcmVuYW1lIHJvdyA0NyxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuClhYIC0gcmVuYW1lIHJvdyA0OCxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuClhYIC0gcmVuYW1lIHJvdyA0OSxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuClhYIC0gcmVuYW1lIHJvdyA1MCxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuClhYIC0gcmVuYW1lIHJvdyA1MSxNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuClhYIC0gcmVuYW1lIHJvdyA1MixNdW5jaGllcyBjYXJ0LDEuMCxrZywyLjAsLDE1LjAsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCkNyZWFtIGNoZWVzZSxNYW51YWwgcGxhY2Vob2xkZXIsLGcsLCwsTWlzc2luZyBwcmljZS9zaXplOyBjb21wbGV0ZSB0aGlzIHJvdyBiZWZvcmUgZmluYWwgcHJpY2luZy4KQ29va2llIGNyZWFtIC8gT3JlbyBjb29raWUgY3JlYW0sTWFudWFsIHBsYWNlaG9sZGVyLCxnLCwsLE1pc3NpbmcgcHJpY2Uvc2l6ZTsgY29tcGxldGUgdGhpcyByb3cgYmVmb3JlIGZpbmFsIHByaWNpbmcuClBpbmsgY2hvY29sYXRlLE1hbnVhbCBwbGFjZWhvbGRlciwsZywsLCxNaXNzaW5nIHByaWNlL3NpemU7IGNvbXBsZXRlIHRoaXMgcm93IGJlZm9yZSBmaW5hbCBwcmljaW5nLgpNaXggLyBmbGF2b3IgcG93ZGVyLE1hbnVhbCBwbGFjZWhvbGRlciwsZywsLCxNaXNzaW5nIHByaWNlL3NpemU7IGNvbXBsZXRlIHRoaXMgcm93IGJlZm9yZSBmaW5hbCBwcmljaW5nLgpEYXRlcyxNYW51YWwgcGxhY2Vob2xkZXIsLGcsLCwsTWlzc2luZyBwcmljZS9zaXplOyBjb21wbGV0ZSB0aGlzIHJvdyBiZWZvcmUgZmluYWwgcHJpY2luZy4KTWl4ZWQgbnV0cyxNYW51YWwgcGxhY2Vob2xkZXIsLGcsLCwsTWlzc2luZyBwcmljZS9zaXplOyBjb21wbGV0ZSB0aGlzIHJvdyBiZWZvcmUgZmluYWwgcHJpY2luZy4K"
-RECIPE_SETTINGS_CSV_B64 = "cmVjaXBlLHBpZWNlc19wZXJfYmF0Y2gscGFja2FnaW5nX2Nvc3RfcGVyX3BpZWNlLGxhYm9yX2Nvc3RfcGVyX2JhdGNoLG90aGVyX2Nvc3RfcGVyX2JhdGNoLHdhc3RlX3BlcmNlbnQsc2VsbF9wcmljZV9wZXJfcGllY2UscGxhbm5lZF9iYXRjaGVzX3NvbGQKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLDI2LjAsMC4wLDAuMCwwLjAsMC4wLDAuMCwxLjAKRmVjaHdldCBSYW1sIC0gY2hlY2sgbmFtZSwxNi4wLDAuMCwwLjAsMC4wLDAuMCwwLjAsMS4wCkNob2NvbGF0ZSBSYW1sIC0gY2hlY2sgbmFtZSwxMC4wLDAuMCwwLjAsMC4wLDAuMCwwLjAsMS4wCkhlYWx0aHkgU25pY2tlcnMsMTAuMCwwLjAsMC4wLDAuMCwwLjAsMC4wLDEuMAo="
-RECIPE_LINES_CSV_B64 = "cmVjaXBlLGluZ3JlZGllbnQscXVhbnRpdHlfdXNlZApFeGNlbCBpbXBvcnRlZCByZWNpcGUsRmxvdXIsMzcwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLE51dGVsbGEsNTIwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEx1cnBhayBidXR0ZXIsMjAwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEVnZyBjYXJ0b24sMi4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxDb3JuIGZsb3VyLDEwLjAKRXhjZWwgaW1wb3J0ZWQgcmVjaXBlLEJha2luZyBwb3dkZXIsOC4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxWYW5pbGxhIHN1Z2FyIHBvd2RlciwxMC4wCkV4Y2VsIGltcG9ydGVkIHJlY2lwZSxNaWxrIGNob2NvbGF0ZSBjaGlwcywyMDAuMApFeGNlbCBpbXBvcnRlZCByZWNpcGUsV2hpdGUgc3VnYXIsODguMApFeGNlbCBpbXBvcnRlZCByZWNpcGUsU29kaXVtIGJpY2FyYm9uYXRlLDIuMApGZWNod2V0IFJhbWwgLSBjaGVjayBuYW1lLE1hZ2lrIHdoaXBwaW5nIGNyZWFtLDIwMC4wCkZlY2h3ZXQgUmFtbCAtIGNoZWNrIG5hbWUsTmVzdGxlIGNvbmRlbnNlZCBtaWxrLDE0MC4wCkZlY2h3ZXQgUmFtbCAtIGNoZWNrIG5hbWUsQ3JlYW0gY2hlZXNlLDMwMC4wCkNob2NvbGF0ZSBSYW1sIC0gY2hlY2sgbmFtZSxDb29raWUgY3JlYW0gLyBPcmVvIGNvb2tpZSBjcmVhbSwyMDAuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsTWlsayBjaG9jb2xhdGUgYmxvY2sgZm9yIGJha2luZywyMDAuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsUGluayBjaG9jb2xhdGUsNzUuMApDaG9jb2xhdGUgUmFtbCAtIGNoZWNrIG5hbWUsTWl4IC8gZmxhdm9yIHBvd2RlciwxLjAKSGVhbHRoeSBTbmlja2VycyxEYXRlcywzNTAuMApIZWFsdGh5IFNuaWNrZXJzLE1peGVkIG51dHMsMTAwLjAKSGVhbHRoeSBTbmlja2VycyxEYXJrIGNob2NvbGF0ZSBibG9jayA0MCUgbm8gYWRkZWQgc3VnYXIsMjUuMAo="
+INGREDIENTS_CSV_B64 = "SW5ncmVkaWVudCAvIHByb2R1Y3QsU291cmNlLFBhY2thZ2Ugc2l6ZSBwZXIgaXRlbSxVbml0LE51bWJlciBib3VnaHQsVG90YWwgcHJpY2UgTEJQLFRvdGFsIHByaWNlIFVTRCxOb3RlcwpBbG1vbmQsQWwgTW9raHRhciByZWNlaXB0LDEwMCxnLDIsMjM5OTQwLDIuNiwKQmFraW5nIHBvd2RlcixNdW5jaGllcyBjYXJ0LDUwMCxnLDEsLDIuNSwKQmVlZiBnZWxhdGluIHBvd2RlciBoYWxhbCxNdW5jaGllcyBjYXJ0LDUwLGcsMiwsMywKQmlzY3VpdCBzcHJlYWQsTXVuY2hpZXMgY2FydCwxLGtnLDIsLDEzLApCcm93biBzdWdhcixPdGhlcnMsMSxrZywxLCwxLjcsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCkJ1ZW5vIHNwcmVhZCxNdW5jaGllcyBjYXJ0LDEsa2csMiwsMTYsCkJ1dHRlcmNyZWFtIHZhbmlsbGEsTXVuY2hpZXMgY2FydCwxMDAsZywxLCwxLjUsCkNham91LEFsIE1va2h0YXIgcmVjZWlwdCwxMDAsZywyLDE5OTk4MCwyLjIsCkNhbmRpYSBtaWxrLEFsIE1va2h0YXIgcmVjZWlwdCwxLEwsNCw2NDAwMDAsNy4xLApDaGlhIHNlZWRzLE11bmNoaWVzIGNhcnQsNDAwLGcsMSwsNC40LApDb2NvYSBwb3dkZXIgdW5zd2VldGVuZWQgMTAtMTIlLE11bmNoaWVzIGNhcnQsMSxrZywxLCwxNy41LFVuY2xlYXIgVVNEIHByaWNlIGluIEV4Y2VsOiA/Pz8/Pz8/Pz8/CkNvb2tpZSBjcmVhbSAvIE9yZW8gY29va2llIGNyZWFtLE1hbnVhbCBwbGFjZWhvbGRlciwsZywsLCxNaXNzaW5nIHByaWNlL3NpemU7IGNvbXBsZXRlIHRoaXMgcm93IGJlZm9yZSBmaW5hbCBwcmljaW5nLgpDb3JuIGZsb3VyLE11bmNoaWVzIGNhcnQsMSxrZywyLCwzLApDcmFzaGVkIHBpc3RhY2hpb3MsT3RoZXJzLDEsa2csMSwsMjUsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCkNyZWFtIGNoZWVzZSBQVUNLLE90aGVycywyMDAsZywyLDYwMDAwMCwsTWlzc2luZyBwcmljZS9zaXplOyBjb21wbGV0ZSB0aGlzIHJvdyBiZWZvcmUgZmluYWwgcHJpY2luZy4KRGFyayBjaG9jb2xhdGUgYmxvY2sgNDAlIG5vIGFkZGVkIHN1Z2FyLE11bmNoaWVzIGNhcnQsMjI1LGcsMiwsNy41LApEYXJrIGNob2NvbGF0ZSBibG9jayBmb3IgYmFraW5nLE11bmNoaWVzIGNhcnQsMyxrZywyLCw0NCwKRGF0ZXMsT3RoZXJzLDEsa2csMSwsMTcsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCkRvbW8gdmFuaWxsYSBjdXN0YXJkLEFsIE1va2h0YXIgcmVjZWlwdCwzMDAsZywxLDIwMDAwNywyLjIsCkRyaWVkIGZydWl0IGN1YmVzLE11bmNoaWVzIGNhcnQsMzAwLGcsMSwsNC43LApFZ2cgY2FydG9uLEFsIE1va2h0YXIgcmVjZWlwdCwzMCx1bml0LDEsMzI5OTk0LDMuNiwKRmxvdXIsQWwgTW9raHRhciByZWNlaXB0LDkwMCxnLDQsNDAwMDAwLDQuNCwKR2FuZG91ciA1NTUgYmlzY3VpdCxBbCBNb2todGFyIHJlY2VpcHQsNTIwLGcsMyw4NDAwMDAsOS4zLApJY2luZyBzdWdhcixNdW5jaGllcyBjYXJ0LDEsa2csMSwsMS41LAprdW5hZmZhLE90aGVycywxLGtnLDEsLDksT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCkx1cnBhayBidXR0ZXIsQWwgTW9raHRhciByZWNlaXB0LDQwMCxnLDcsNDkwMDAwLDM4LjEsCk1hZ2lrIHdoaXBwaW5nIGNyZWFtLEFsIE1va2h0YXIgcmVjZWlwdCwxMDAwLG1sLDEsMzEwMDAwLDMuNCwKTUFaT0xMQSBidXR0ZXIsTWFudWFsIHBsYWNlaG9sZGVyLDE2MDAsbWwsMSwsMTIsTWlzc2luZyBwcmljZS9zaXplOyBjb21wbGV0ZSB0aGlzIHJvdyBiZWZvcmUgZmluYWwgcHJpY2luZy4KTWlsayAxIEwsQWwgTW9raHRhciByZWNlaXB0LDEsTCwxLDE3MDAwMCwxLjgsCk1pbGsgY2hvY29sYXRlIGJsb2NrIGZvciBiYWtpbmcsTXVuY2hpZXMgY2FydCwzLGtnLDMsLDY0LjUsCk1pbGsgY2hvY29sYXRlIGNoaXBzLE11bmNoaWVzIGNhcnQsMSxrZywxLCw2LjUsCk1peCAvIGZsYXZvciBwb3dkZXIsTWFudWFsIHBsYWNlaG9sZGVyLCxnLCwsLE1pc3NpbmcgcHJpY2Uvc2l6ZTsgY29tcGxldGUgdGhpcyByb3cgYmVmb3JlIGZpbmFsIHByaWNpbmcuCk1peGVkIG51dHMsTWFudWFsIHBsYWNlaG9sZGVyLCxnLCwsLE1pc3NpbmcgcHJpY2Uvc2l6ZTsgY29tcGxldGUgdGhpcyByb3cgYmVmb3JlIGZpbmFsIHByaWNpbmcuCk1vemFyZWxsYSBidXR0ZXIsT3RoZXJzLCwsLCwsCk5lc2NhZsOpLE90aGVycywxLGtnLDEsLDcsT3JpZ2luYWwgRXhjZWwgbmFtZSB3YXMgWFguIFJlbmFtZSB0aGlzIGluZ3JlZGllbnQuCk5lc3RsZSBjb25kZW5zZWQgbWlsayxBbCBNb2todGFyIHJlY2VpcHQsMzcwLGcsMiw0NjAwMDAsNS4xLApOdXRlbGxhLEFsIE1va2h0YXIgcmVjZWlwdCw3NTAsZywxLDc2NTAwMCw4LjUsCk9hdCBmbGFrZXMsTXVuY2hpZXMgY2FydCwyNTAsZyw0LCwzLjYsCk9pbCxBbCBNb2todGFyIHJlY2VpcHQsNCxMLDEsODMwMDAwLDkuMiwKUGVhbnV0IGJ1dHRlciAxMDAlLE11bmNoaWVzIGNhcnQsMSxrZywyLCwxNSwKUGluayBjaG9jb2xhdGUsTWFudWFsIHBsYWNlaG9sZGVyLCxnLCwsLE1pc3NpbmcgcHJpY2Uvc2l6ZTsgY29tcGxldGUgdGhpcyByb3cgYmVmb3JlIGZpbmFsIHByaWNpbmcuClBpc3RhY2hpbyBzcHJlYWQsTXVuY2hpZXMgY2FydCwxLGtnLDIsLDM3LApQb3BwaW5zIGNob2NvIGJpdHMsQWwgTW9raHRhciByZWNlaXB0LDM1MCxnLDEsMzI5OTk0LDMuNiwKUHVjayBjb29raW5nIGNyZWFtLEFsIE1va2h0YXIgcmVjZWlwdCwxLEwsMSw1OTk5OTQsNi42LApSZWQgZ2VsIGZvb2QgY29sb3JpbmcsTXVuY2hpZXMgY2FydCwyMCxnLDEsLDMsVW5jbGVhciBVU0QgcHJpY2UgaW4gRXhjZWw6ID8/Pz8/Pz8/Pz8KUmVkIHZlbHZldCBjYWtlIG1peCxNdW5jaGllcyBjYXJ0LDQwMCxnLDEsLDIuNywKUmljZSBjcmlzcHkgbWlsayB0b3BwaW5ncyxNdW5jaGllcyBjYXJ0LDUwMCxnLDEsLDMuOSwKUmljZSBjcmlzcHkgcmFpbmJvdyxNdW5jaGllcyBjYXJ0LDQ1MCxnLDIsLDcuOCwKU29kaXVtIGJpY2FyYm9uYXRlLE11bmNoaWVzIGNhcnQsNTAwLGcsMSwsMS41LApTcGVjdWxvb3MgYmlzY3VpdCBjcmVhbXkgc3ByZWFkLE11bmNoaWVzIGNhcnQsMSxrZywyLCwxNiwKVmFuaWxsYSBzdWdhciBwb3dkZXIsTXVuY2hpZXMgY2FydCw1MDAsZywxLCwyLjksCldoaXBwZWQgY3JlYW0gcG93ZGVyIHZhbmlsbGEsTXVuY2hpZXMgY2FydCwxLGtnLDIsLDE0LApXaGl0ZSBjaG9jb2xhdGUgY2hpcHMsTXVuY2hpZXMgY2FydCw1MDAsZywxLCwzLjUsCldoaXRlIHN1Z2FyLE11bmNoaWVzIGNhcnQsOTAwLGcsMTAsLDksCg=="
+RECIPE_SETTINGS_CSV_B64 = "cmVjaXBlLHBpZWNlc19wZXJfYmF0Y2gscGFja2FnaW5nX2Nvc3RfcGVyX3BpZWNlLGxhYm9yX2Nvc3RfcGVyX2JhdGNoLG90aGVyX2Nvc3RfcGVyX2JhdGNoLHdhc3RlX3BlcmNlbnQsc2VsbF9wcmljZV9wZXJfcGllY2UscGxhbm5lZF9iYXRjaGVzX3NvbGQK"
+RECIPE_LINES_CSV_B64 = "cmVjaXBlLGluZ3JlZGllbnQscXVhbnRpdHlfdXNlZAo="
 
 
 INGREDIENT_INPUT_COLUMNS = [
@@ -183,6 +183,15 @@ def recipe_row_to_payload(row):
 
 
 def save_ingredients_to_database(df, delete_missing=True):
+    """
+    Save the ingredient table.
+
+    If an ingredient row was removed from the table, remove its links from
+    recipe_ingredients first, then delete the ingredient itself. The recipes
+    remain saved; only the deleted ingredient is removed from their composition.
+
+    Returns a list describing deleted ingredients and affected recipes.
+    """
     supabase = get_supabase()
     if supabase is None:
         raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
@@ -195,19 +204,80 @@ def save_ingredients_to_database(df, delete_missing=True):
     if payload:
         supabase.table("ingredients").upsert(payload, on_conflict="name").execute()
 
+    deletion_report = []
+
     if delete_missing:
         keep_names = set(clean_df["Ingredient / product"].tolist())
-        existing = supabase.table("ingredients").select("name").execute().data or []
+        existing = (
+            supabase.table("ingredients")
+            .select("id,name")
+            .execute()
+            .data
+            or []
+        )
+
         for item in existing:
+            ingredient_id = item.get("id")
             name = clean_text(item.get("name"))
-            if name and name not in keep_names:
-                try:
-                    supabase.table("ingredients").delete().eq("name", name).execute()
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"Cannot remove ingredient '{name}' because it is used by a recipe. "
-                        "Remove it from the recipe first."
-                    ) from exc
+
+            if not ingredient_id or not name or name in keep_names:
+                continue
+
+            links = (
+                supabase.table("recipe_ingredients")
+                .select("recipe_id")
+                .eq("ingredient_id", ingredient_id)
+                .execute()
+                .data
+                or []
+            )
+
+            recipe_ids = sorted(
+                {
+                    link.get("recipe_id")
+                    for link in links
+                    if link.get("recipe_id")
+                }
+            )
+
+            affected_recipes = []
+            for recipe_id in recipe_ids:
+                recipe_rows = (
+                    supabase.table("recipes")
+                    .select("name")
+                    .eq("id", recipe_id)
+                    .execute()
+                    .data
+                    or []
+                )
+                if recipe_rows:
+                    recipe_name = clean_text(recipe_rows[0].get("name"))
+                    if recipe_name:
+                        affected_recipes.append(recipe_name)
+
+            if links:
+                (
+                    supabase.table("recipe_ingredients")
+                    .delete()
+                    .eq("ingredient_id", ingredient_id)
+                    .execute()
+                )
+
+            (
+                supabase.table("ingredients")
+                .delete()
+                .eq("id", ingredient_id)
+                .execute()
+            )
+
+            deletion_report.append(
+                {
+                    "ingredient": name,
+                    "recipes": sorted(set(affected_recipes)),
+                }
+            )
+
+    return deletion_report
 
 
 def save_recipe_settings_to_database(recipe_settings):
@@ -346,14 +416,8 @@ def seed_database_if_empty():
     if not ingredients_exist:
         save_ingredients_to_database(default_ingredients_df(), delete_missing=False)
 
-    recipes_exist = bool(supabase.table("recipes").select("id").limit(1).execute().data)
-    if not recipes_exist:
-        defaults_settings = default_recipe_settings_df()
-        defaults_lines = default_recipe_lines_df()
-        for _, setting in defaults_settings.iterrows():
-            recipe_name = clean_text(setting["recipe"])
-            lines = defaults_lines[defaults_lines["recipe"] == recipe_name].copy()
-            save_recipe_to_database(setting.to_dict(), lines)
+    # Recipes are intentionally not seeded.
+    # The app starts with no default recipes, and users create only the recipes they need.
 
 
 def reset_all_data():
@@ -591,11 +655,43 @@ def delete_recipe(recipe_name):
             del st.session_state[key]
 
 
+def delete_all_recipes():
+    """
+    Delete every recipe from Supabase.
+
+    recipe_ingredients rows are deleted automatically because the database
+    foreign key uses ON DELETE CASCADE.
+    """
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    supabase.table("recipes").delete().neq("name", "__never__").execute()
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("recipe_cart_") or key.startswith("pending_ingredient_"):
+            del st.session_state[key]
+
+
 def show_ingredients_page(ingredients_input):
     st.header("1. Ingredients")
 
+    flash_message = st.session_state.pop("ingredients_flash_message", None)
+    flash_type = st.session_state.pop("ingredients_flash_type", "success")
+
+    if flash_message:
+        if flash_type == "warning":
+            st.warning(flash_message)
+        else:
+            st.success(flash_message)
+
     st.write(
         "This table follows your Excel model. Edit the purchase columns; the cost columns calculate automatically."
+    )
+
+    st.caption(
+        "When you delete an ingredient row and save, that ingredient is also removed "
+        "from any recipes that currently use it."
     )
 
     col1, col2, col3 = st.columns([1, 1, 2])
@@ -610,10 +706,27 @@ def show_ingredients_page(ingredients_input):
         )
 
     with col2:
-        if st.button("Reset all data from embedded Excel import"):
-            reset_all_data()
-            st.success("Data reset from the embedded Excel import.")
-            st.rerun()
+        with st.expander("Reset database"):
+            st.warning(
+                "This deletes every saved recipe and replaces the ingredient database "
+                "with the 54 ingredients from the latest attached export."
+            )
+
+            confirm_reset = st.checkbox(
+                "I confirm I want to delete recipes and restore the attached ingredient list",
+                key="confirm_full_database_reset",
+            )
+
+            if st.button(
+                "Reset all data to attached ingredient list",
+                disabled=not confirm_reset,
+                key="reset_all_data_button",
+            ):
+                reset_all_data()
+                st.success(
+                    "Database reset: recipes deleted and the latest attached ingredient list restored."
+                )
+                st.rerun()
 
     with col3:
         st.info("For receipt rows, fill Total price LBP. For cart/USD rows, fill Total price USD.")
@@ -658,9 +771,51 @@ def show_ingredients_page(ingredients_input):
         if to_save["Ingredient / product"].duplicated().any():
             st.error("Some ingredient names are duplicated. Keep ingredient names unique.")
         else:
-            save_ingredients_to_database(to_save)
-            st.success("Ingredient table saved.")
-            st.rerun()
+            try:
+                deletion_report = save_ingredients_to_database(to_save)
+
+                if deletion_report:
+                    deleted_names = [
+                        item["ingredient"]
+                        for item in deletion_report
+                    ]
+
+                    affected_parts = []
+                    for item in deletion_report:
+                        recipes = item.get("recipes", [])
+                        if recipes:
+                            affected_parts.append(
+                                f"{item['ingredient']}: " + ", ".join(recipes)
+                            )
+
+                    message = (
+                        "Ingredient table saved. Deleted: "
+                        + ", ".join(deleted_names)
+                        + "."
+                    )
+
+                    if affected_parts:
+                        message += (
+                            " These ingredients were also removed from recipes: "
+                            + " | ".join(affected_parts)
+                            + "."
+                        )
+
+                    st.session_state["ingredients_flash_type"] = "warning"
+                    st.session_state["ingredients_flash_message"] = message
+                else:
+                    st.session_state["ingredients_flash_type"] = "success"
+                    st.session_state["ingredients_flash_message"] = (
+                        "Ingredient table saved."
+                    )
+
+                st.rerun()
+
+            except Exception as exc:
+                st.error(
+                    "Could not save the ingredient table. "
+                    f"Database message: {exc}"
+                )
 
     incomplete = ingredient_display[ingredient_display["Status"] != "OK"]
 
@@ -1178,6 +1333,26 @@ def show_profit_summary(ingredients_input, recipe_settings, recipe_lines):
         delete_recipe(recipe_to_delete)
         st.success(f"Removed recipe: {recipe_to_delete}")
         st.rerun()
+
+    with st.expander("Remove all recipes"):
+        st.warning(
+            "This permanently deletes every recipe and all recipe ingredient quantities. "
+            "Your ingredient database will remain unchanged."
+        )
+
+        confirm_delete_all = st.checkbox(
+            "I confirm I want to permanently remove ALL recipes",
+            key="confirm_delete_all_recipes",
+        )
+
+        if st.button(
+            "Remove all recipes",
+            disabled=not confirm_delete_all,
+            key="remove_all_recipes_button",
+        ):
+            delete_all_recipes()
+            st.success("All recipes were removed. Ingredients were kept.")
+            st.rerun()
 
     st.subheader("Recipe details")
 
