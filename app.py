@@ -19,7 +19,7 @@ import streamlit as st
 from supabase import Client, create_client
 
 
-APP_VERSION = "v20 Supabase clear old recipes once"
+APP_VERSION = "v21 Supabase fixed Profit Summary"
 DEFAULT_EXCHANGE_RATE = 90000.0
 
 # Hidden database marker used only to ensure the existing recipes are cleared once.
@@ -647,15 +647,21 @@ def compute_recipe_summary(ingredients_input, recipe_lines, recipe_settings, exc
             .rename(columns={"line_cost_usd": "ingredient_cost_per_batch"})
         )
 
-        missing_used = (
-            merged[
-                (merged["quantity_used"] > 0)
-                & (merged["Cost per g/ml/unit $"] <= 0)
-            ]
-            .groupby("recipe", as_index=False)["ingredient"]
-            .apply(lambda values: ", ".join(sorted(set(values))))
-            .rename(columns={"ingredient": "missing_cost_ingredients"})
-        )
+        missing_rows = merged[
+            (merged["quantity_used"] > 0)
+            & (merged["Cost per g/ml/unit $"] <= 0)
+        ].copy()
+
+        if missing_rows.empty:
+            missing_used = pd.DataFrame(
+                columns=["recipe", "missing_cost_ingredients"]
+            )
+        else:
+            missing_used = (
+                missing_rows.groupby("recipe")["ingredient"]
+                .agg(lambda values: ", ".join(sorted(set(values))))
+                .reset_index(name="missing_cost_ingredients")
+            )
 
     summary = settings.merge(ingredient_cost, on="recipe", how="left")
     summary = summary.merge(missing_used, on="recipe", how="left")
