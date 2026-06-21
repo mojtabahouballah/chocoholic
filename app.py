@@ -19,8 +19,12 @@ import streamlit as st
 from supabase import Client, create_client
 
 
-APP_VERSION = "v19 Supabase with latest ingredient export"
+APP_VERSION = "v20 Supabase clear old recipes once"
 DEFAULT_EXCHANGE_RATE = 90000.0
+
+# Hidden database marker used only to ensure the existing recipes are cleared once.
+# It is excluded from all recipe lists and calculations.
+RECIPE_CLEAR_MIGRATION_MARKER = "__system_v20_recipes_cleared__"
 
 # Embedded defaults. Do not edit these long strings manually.
 # Use the website tables to edit data after the app starts.
@@ -354,6 +358,12 @@ def load_all_data_from_database():
         supabase.table("ingredients").select("*").order("name").execute().data or []
     )
     recipes_data = supabase.table("recipes").select("*").order("name").execute().data or []
+    recipes_data = [
+        row
+        for row in recipes_data
+        if clean_text(row.get("name")) != RECIPE_CLEAR_MIGRATION_MARKER
+    ]
+
     links_data = supabase.table("recipe_ingredients").select("*").execute().data or []
 
     ingredient_rows = [
@@ -418,6 +428,60 @@ def seed_database_if_empty():
 
     # Recipes are intentionally not seeded.
     # The app starts with no default recipes, and users create only the recipes they need.
+
+
+def clear_existing_recipes_once():
+    """
+    Remove all currently stored recipes one time only.
+
+    A hidden marker row is stored in the recipes table so later user-created
+    recipes are not deleted on subsequent app restarts.
+    """
+    supabase = get_supabase()
+    if supabase is None:
+        raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
+
+    marker_rows = (
+        supabase.table("recipes")
+        .select("id")
+        .eq("name", RECIPE_CLEAR_MIGRATION_MARKER)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+
+    if marker_rows:
+        return False
+
+    # Delete every existing recipe. Linked recipe_ingredients rows are removed
+    # automatically by the ON DELETE CASCADE database rule.
+    supabase.table("recipes").delete().neq(
+        "name",
+        RECIPE_CLEAR_MIGRATION_MARKER,
+    ).execute()
+
+    marker_payload = {
+        "name": RECIPE_CLEAR_MIGRATION_MARKER,
+        "pieces_per_batch": 0,
+        "packaging_cost_per_piece": 0,
+        "labor_cost_per_batch": 0,
+        "other_cost_per_batch": 0,
+        "waste_percent": 0,
+        "sell_price_per_piece": 0,
+        "planned_batches_sold": 0,
+    }
+
+    supabase.table("recipes").upsert(
+        marker_payload,
+        on_conflict="name",
+    ).execute()
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("recipe_cart_") or key.startswith("pending_ingredient_"):
+            del st.session_state[key]
+
+    return True
 
 
 def reset_all_data():
@@ -666,7 +730,10 @@ def delete_all_recipes():
     if supabase is None:
         raise RuntimeError("Supabase is not configured in Streamlit Secrets.")
 
-    supabase.table("recipes").delete().neq("name", "__never__").execute()
+    supabase.table("recipes").delete().neq(
+        "name",
+        RECIPE_CLEAR_MIGRATION_MARKER,
+    ).execute()
 
     for key in list(st.session_state.keys()):
         if key.startswith("recipe_cart_") or key.startswith("pending_ingredient_"):
@@ -846,16 +913,30 @@ def show_recipe_builder(ingredients_input, recipe_settings, recipe_lines):
         [recipe for recipe in recipe_settings["recipe"].dropna().unique() if clean_text(recipe) != ""]
     )
 
-    mode = st.radio(
-        "What do you want to do?",
-        ["Edit existing recipe", "Add new recipe"],
-        horizontal=True,
-    )
+    if recipe_options:
+        st.write("Saved recipes:")
+        st.write(", ".join(recipe_options))
 
-    if mode == "Edit existing recipe" and recipe_options:
-        selected_recipe = st.selectbox("Recipe", recipe_options)
+        mode = st.radio(
+            "What do you want to do?",
+            ["Edit existing recipe", "Add new recipe"],
+            horizontal=True,
+        )
+
+        if mode == "Edit existing recipe":
+            selected_recipe = st.selectbox("Recipe", recipe_options)
+        else:
+            selected_recipe = st.text_input(
+                "New recipe name",
+                placeholder="Example: Pistachio cookie",
+            )
     else:
-        selected_recipe = st.text_input("New recipe name", placeholder="Example: Pistachio cookie")
+        st.info("There are no recipes yet.")
+        mode = "Add new recipe"
+        selected_recipe = st.text_input(
+            "Create your first recipe",
+            placeholder="Example: Pistachio cookie",
+        )
 
     selected_recipe = clean_text(selected_recipe)
 
@@ -1241,7 +1322,7 @@ def show_profit_summary(ingredients_input, recipe_settings, recipe_lines):
     )
 
     if summary.empty:
-        st.warning("No recipes yet.")
+        st.info("There are no recipes yet.")
         return
 
     display = summary[
@@ -1451,6 +1532,7 @@ def main():
 
     try:
         seed_database_if_empty()
+        recipes_were_cleared = clear_existing_recipes_once()
         ingredients_input, recipe_settings, recipe_lines = load_all_data_from_database()
     except Exception as exc:
         st.title("Chocoholic")
@@ -1468,6 +1550,11 @@ def main():
 
     st.write("Ingredient prices -> recipe quantities -> cost per piece -> selling price -> profit.")
     st.success("Supabase storage is active. Ingredients and recipes are saved permanently.")
+
+    if recipes_were_cleared:
+        st.info(
+            "The previous recipes were removed. Your current ingredient database was kept."
+        )
 
     tab_ingredients, tab_builder, tab_profit = st.tabs(
         ["1. Ingredients", "2. Recipe Builder", "3. Profit Summary"]

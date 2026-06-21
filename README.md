@@ -1,7 +1,7 @@
-# Chocoholic Supabase v19
+# Chocoholic Supabase v20
 
-- Uses the latest attached export as the embedded ingredient backup.
-- Embedded ingredients: 54.
-- Contains zero embedded/default recipes.
-- Normal startup does not overwrite existing Supabase ingredients.
-- The full reset option is protected by a confirmation checkbox.
+- Keeps the latest 54-ingredient database.
+- Clears all recipes already stored in Supabase once.
+- Stores a hidden migration marker so future recipes are preserved.
+- Lists saved recipes when present.
+- Displays `There are no recipes yet.` when none exist.
